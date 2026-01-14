@@ -1,0 +1,49 @@
+server:
+  port: 8082
+  forward-headers-strategy: framework
+grpc:
+  server:
+    port: 9092
+spring:
+  application:
+    name: shipping-service
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/logistics_db?createDatabaseIfNotExist=true
+    username: root
+    password: 12345678
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/logistics-realm}
+          jwk-set-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8090/realms/logistics-realm}/protocol/openid-connect/certs
+  cloud:
+    function:
+      definition: order
+    stream:
+      bindings:
+        order-in-0:
+          destination: order-events
+          group: shipping-group
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+springdoc:
+  swagger-ui:
+    path: /swagger
