@@ -7,6 +7,7 @@ import com.logistics.common.shipping.ShipmentRequest;
 import com.logistics.common.shipping.ShipmentResponse;
 import com.logistics.common.shipping.ShippingServiceGrpc;
 import com.logistics.order.model.Order;
+import com.logistics.order.model.ProductInfo;
 import com.logistics.order.service.OrderDataService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,6 +17,7 @@ import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -56,23 +58,24 @@ public class OrderController {
 
     @PostMapping
     @Operation(summary = "Створити замовлення (за замовчуванням)", description = "Перевіряє stock через REST, створює доставку через gRPC (аналог mixed-1)")
-    public String createOrder(@RequestParam String productId, @RequestParam int quantity, @RequestParam String address) {
-        return createOrderMixed1(productId, quantity, address);
+    public String createOrder(@RequestParam String productId, @RequestParam int quantity, @RequestParam String address, @RequestParam(defaultValue = "Guest") String customerName) {
+        return createOrderMixed1(productId, quantity, address, customerName);
     }
 
     @PostMapping("/mixed-1")
     @Operation(summary = "Створити замовлення (REST + gRPC)", description = "Перевіряє stock через REST, створює доставку через gRPC")
-    public String createOrderMixed1(@RequestParam String productId, @RequestParam int quantity, @RequestParam String address) {
+    public String createOrderMixed1(@RequestParam String productId, @RequestParam int quantity, @RequestParam String address, @RequestParam String customerName) {
         // 1. Check stock via REST
-        Integer availableStock = restTemplate.getForObject(inventoryServiceUrl + "/" + productId, Integer.class);
+        ProductInfo product = restTemplate.getForObject(inventoryServiceUrl + "/" + productId, ProductInfo.class);
         
-        if (availableStock == null || availableStock < quantity) {
-            return "Order failed: Not enough stock (Available: " + (availableStock != null ? availableStock : 0) + ")";
+        if (product == null || product.getQuantity() < quantity) {
+            return "Order failed: Not enough stock (Available: " + (product != null ? product.getQuantity() : 0) + ")";
         }
 
         // 2. Create order
         String orderId = UUID.randomUUID().toString();
-        Order order = new Order(orderId, productId, quantity, address, "PENDING");
+        double totalAmount = product.getPrice() * quantity;
+        Order order = new Order(orderId, productId, quantity, address, "PENDING", LocalDateTime.now(), totalAmount, customerName);
         orderDataService.saveOrder(order);
 
         // 3. Initiate shipping via gRPC
@@ -87,13 +90,14 @@ public class OrderController {
         streamBridge.send("order-out-0", "Order created for " + productId + " quantity " + quantity + " to " + address);
 
         return "Order " + orderId + " created successfully. " +
-                "Stock checked via REST. " +
-                "Shipment status: " + shipmentResponse.getStatus() + ", ID: " + shipmentResponse.getShipmentId() + " (via gRPC)";
+                "Stock checked via REST. Product: " + product.getName() + 
+                ". Total: " + totalAmount +
+                ". Shipment status: " + shipmentResponse.getStatus() + ", ID: " + shipmentResponse.getShipmentId() + " (via gRPC)";
     }
 
     @PostMapping("/mixed-2")
     @Operation(summary = "Створити замовлення (gRPC + REST)", description = "Перевіряє stock через gRPC, створює доставку через REST")
-    public String createOrderMixed2(@RequestParam String productId, @RequestParam int quantity, @RequestParam String address) {
+    public String createOrderMixed2(@RequestParam String productId, @RequestParam int quantity, @RequestParam String address, @RequestParam String customerName) {
         // 1. Check stock via gRPC
         StockRequest stockRequest = StockRequest.newBuilder()
                 .setProductId(productId)
@@ -107,8 +111,12 @@ public class OrderController {
         }
 
         // 2. Create order
+        ProductInfo product = restTemplate.getForObject(inventoryServiceUrl + "/" + productId, ProductInfo.class);
+        double price = (product != null) ? product.getPrice() : 0.0;
+        double totalAmount = price * quantity;
+
         String orderId = UUID.randomUUID().toString();
-        Order order = new Order(orderId, productId, quantity, address, "PENDING");
+        Order order = new Order(orderId, productId, quantity, address, "PENDING", LocalDateTime.now(), totalAmount, customerName);
         orderDataService.saveOrder(order);
 
         // 3. Initiate shipping via REST
@@ -118,6 +126,7 @@ public class OrderController {
 
         return "Order " + orderId + " created successfully. " +
                 "Stock checked via gRPC. " +
-                "Shipment status: " + restResponse + " (via REST)";
+                "Total: " + totalAmount +
+                ". Shipment status: " + restResponse + " (via REST)";
     }
 }

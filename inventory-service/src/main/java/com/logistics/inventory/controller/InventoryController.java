@@ -1,10 +1,12 @@
 package com.logistics.inventory.controller;
 
+import com.logistics.inventory.model.InventoryItem;
 import com.logistics.inventory.service.InventoryDataService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -19,6 +21,12 @@ public class InventoryController {
     }
 
     @GetMapping("/{productId}")
+    @Operation(summary = "Отримати інформацію про товар", description = "Повертає дані про товар за його ID")
+    public InventoryItem getProduct(@PathVariable String productId) {
+        return inventoryDataService.getProduct(productId).orElse(null);
+    }
+
+    @GetMapping("/{productId}/stock")
     @Operation(summary = "Отримати кількість товару", description = "Повертає доступну кількість товару за його ID")
     public Integer getStock(@PathVariable String productId) {
         return inventoryDataService.getStock(productId);
@@ -32,8 +40,8 @@ public class InventoryController {
     }
 
     @GetMapping
-    @Operation(summary = "Отримати весь інвентар", description = "Повертає список усіх товарів та їх кількість")
-    public Map<String, Integer> getAllInventory() {
+    @Operation(summary = "Отримати весь інвентар", description = "Повертає список усіх товарів")
+    public List<InventoryItem> getAllInventory() {
         return inventoryDataService.getAllInventory();
     }
 }
